@@ -1,0 +1,13 @@
+* @monicap360
+/.github/ @monicap360
+/.github/workflows/ @monicap360
+/src/**/auth/ @monicap360
+/src/**/admin/ @monicap360
+/src/**/api/ @monicap360
+/app/**/api/ @monicap360
+/src/**/ingest/ @monicap360
+/supabase/ @monicap360
+/migrations/ @monicap360
+/next.config.* @monicap360
+/vercel.json @monicap360
+/render.yaml @monicap360
