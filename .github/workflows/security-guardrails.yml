@@ -1,0 +1,63 @@
+name: Security guardrails
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-guardrails-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate repository security policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source without retaining credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Reject tracked environment and private-key files
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r file; do
+            case "$file" in
+              *.example|*.sample|*.template) continue ;;
+              .env|.env.*|*.pem|*.key|*.p12|*.pfx|*.jks|*.keystore)
+                echo "::error file=$file::Sensitive environment or key material must not be tracked."
+                failed=1
+                ;;
+            esac
+          done < <(git ls-files)
+          exit "$failed"
+
+      - name: Reject critical credential and workflow patterns
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          if git grep -I -n -E -- '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|sk_live_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}' -- ':!*.example' ':!*.sample' ':!*.template'; then
+            echo '::error::A high-confidence credential pattern is present in tracked source.'
+            failed=1
+          fi
+          if [ -d .github/workflows ]; then
+            if grep -RInE '^\s*pull_request_target\s*:|permissions\s*:\s*write-all' .github/workflows; then
+              echo '::error::A dangerous GitHub Actions trigger or write-all permission is present.'
+              failed=1
+            fi
+            if grep -RInE '[?&](secret|token|api[_-]?key|key)=.*(secrets\.|process\.env|\$[A-Z][A-Z0-9_]+)' .github/workflows; then
+              echo '::error::A secret appears to be transmitted in a URL query string.'
+              failed=1
+            fi
+          fi
+          exit "$failed"
